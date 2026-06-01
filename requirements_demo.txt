@@ -1,0 +1,7 @@
+# Demo 版本（電腦用，不需硬體）
+# pip install -r requirements_demo.txt
+
+flask>=3.0
+flask-socketio>=5.3
+python-socketio>=5.10
+eventlet>=0.35

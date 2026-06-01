@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>雷霆戰機</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0a1a;color:#e0e0ff;font-family:'Courier New',monospace;
+     display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:16px}
+h1{color:#00e5ff;font-size:1.6rem;margin-bottom:4px;text-shadow:0 0 12px #00e5ff;letter-spacing:3px}
+.sub{color:#606090;font-size:.82rem;margin-bottom:12px}
+.layout{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;justify-content:center}
+#cvs{border:2px solid #00e5ff44;border-radius:6px;display:block;background:#000010;cursor:none}
+.sidebar{width:190px}
+.card{background:#12122a;border:1px solid #00e5ff22;border-radius:8px;padding:10px 14px;margin-bottom:8px}
+.lbl{color:#606090;font-size:.72rem;margin-bottom:3px}
+.val{font-size:1.5rem;color:#00e5ff;font-weight:bold}
+.val.red{color:#ff4444}.val.yellow{color:#ffd700}.val.green{color:#00ff88}
+.btn{width:100%;padding:9px;margin-bottom:6px;background:#00e5ff;color:#0a0a1a;
+     border:none;border-radius:6px;font-family:inherit;font-size:.95rem;font-weight:bold;
+     cursor:pointer;letter-spacing:1px;transition:opacity .2s}
+.btn:hover{opacity:.85}
+.btn.ghost{background:transparent;color:#00e5ff;border:1px solid #00e5ff}
+.keys{background:#12122a;border-radius:8px;padding:10px 14px;font-size:.78rem;color:#606090;line-height:2}
+.keys b{color:#00e5ff}
+.buff-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.buff-chip{padding:2px 8px;border-radius:12px;font-size:.75rem;border:1px solid;background:rgba(0,0,0,.3)}
+.records{margin-top:16px;width:100%;max-width:680px}
+.records h2{color:#00e5ff;margin-bottom:8px;font-size:.95rem;letter-spacing:1px}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{padding:5px 8px;text-align:left;border-bottom:1px solid #00e5ff18}
+th{color:#00e5ff;font-size:.78rem}
+tr:hover td{background:#00e5ff08}
+</style>
+</head>
+<body>
+<h1>&#9889; 雷霆戰機</h1>
+<p class="sub">Thunder Fighter &mdash; Demo Mode</p>
+
+<div class="layout">
+  <div style="position:relative">
+    <canvas id="cvs"></canvas>
+  </div>
+  <div class="sidebar">
+    <div class="card"><div class="lbl">分數</div><div class="val" id="score">0</div></div>
+    <div class="card"><div class="lbl">關卡</div><div class="val" id="level">1</div></div>
+    <div class="card"><div class="lbl">生命值</div>
+      <div class="val red" id="lives">&#10084;&#10084;&#10084;&#10084;&#10084;</div></div>
+    <div class="card"><div class="lbl">導彈</div>
+      <div class="val yellow" id="missiles">&#9679;&#9679;&#9679;</div></div>
+    <div class="card"><div class="lbl">子彈數</div>
+      <div class="val green" id="bullets">|</div></div>
+    <div class="card"><div class="lbl">活躍 Buff</div>
+      <div class="buff-row" id="buffs">&mdash;</div></div>
+    <button class="btn" id="btn-start">&#9654; 開始遊戲</button>
+    <button class="btn ghost" id="btn-pause">&#9646;&#9646; 暫停</button>
+    <button class="btn ghost" onclick="loadRecords()">&#128203; 排行榜</button>
+    <div class="keys">
+      <b>WASD / 方向鍵</b> 移動<br>
+      <b>空白鍵</b> 射擊<br>
+      <b>E</b> 導彈清場<br>
+      <b>P</b> 暫停 / 繼續<br>
+      <b>Enter</b> 開始 / 重新開始
+    </div>
+  </div>
+</div>
+
+<div class="records" id="rec-section" style="display:none">
+  <h2>&#127942; 歷史紀錄</h2>
+  <table><thead><tr><th>#</th><th>分數</th><th>關卡</th><th>時間</th></tr></thead>
+  <tbody id="rec-body"></tbody></table>
+</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script>
+const socket = io();
+const cvs = document.getElementById('cvs');
+const ctx  = cvs.getContext('2d');
+let GW=320, GH=480, S=1;
+
+function resize(w,h){
+  GW=w; GH=h;
+  const mw=Math.min(window.innerWidth*0.58,520);
+  const mh=window.innerHeight*0.82;
+  S=Math.max(0.5,Math.round(Math.min(mw/w,mh/h)*10)/10);
+  cvs.width=Math.round(w*S); cvs.height=Math.round(h*S);
+}
+resize(320,480);
+
+/* ---------- 圖片 ---------- */
+const IMGS={};
+const SRCS={
+  bg:'/static/img/背景.png',
+  player:'/static/img/玩家飛機.png',
+  bulletP:'/static/img/玩家子彈.png',
+  enemy_scout:'/static/img/enemy_scout.png',
+  enemy_fighter:'/static/img/enemy_fighter.png',
+  enemy_bomber:'/static/img/enemy_bomber.png',
+  enemy_zigzag:'/static/img/enemy_zigzag.png',
+  enemy_boss:'/static/img/enemy_boss.png',
+  bullet_normal:'/static/img/bullet_enemy_normal.png',
+  bullet_spread:'/static/img/bullet_enemy_spread.png',
+  bullet_laser:'/static/img/bullet_enemy_laser.png',
+  bullet_homing:'/static/img/bullet_enemy_homing.png',
+};
+Object.entries(SRCS).forEach(([k,src])=>{ const i=new Image(); i.src=src; IMGS[k]=i; });
+
+const ETYPE_SZ={scout:[28,28],fighter:[40,32],bomber:[56,44],zigzag:[32,32],boss:[72,64]};
+const ETYPE_COLOR={scout:'#88aaff',fighter:'#ff4444',bomber:'#ff8800',zigzag:'#aa44ff',boss:'#ff0044'};
+const BULLET_COLOR={normal:'#ff8800',spread:'#ff44aa',laser:'#00ffff',homing:'#ff00ff'};
+
+function tryImg(img,cx,cy,w,h){
+  if(img&&img.complete&&img.naturalWidth){
+    ctx.drawImage(img,(cx-w/2)*S,(cy-h/2)*S,w*S,h*S); return true;
+  }
+  return false;
+}
+function drawRotated(img,cx,cy,w,h,angle,fb){
+  ctx.save(); ctx.translate(cx*S,cy*S); ctx.rotate(angle);
+  if(img&&img.complete&&img.naturalWidth) ctx.drawImage(img,-w/2*S,-h/2*S,w*S,h*S);
+  else fb();
+  ctx.restore();
+}
+
+/* ---------- 渲染 ---------- */
+function render(d){
+  ctx.clearRect(0,0,cvs.width,cvs.height);
+  if(!tryImg(IMGS.bg,GW/2,GH/2,GW,GH)){ctx.fillStyle='#000010';ctx.fillRect(0,0,cvs.width,cvs.height);}
+  if(d.state==='menu'){drawMenu();return;}
+  if(d.state==='paused'){renderGame(d);drawPause();return;}
+  if(d.state==='gameover'){renderGame(d);drawGameOver(d);return;}
+  renderGame(d);
+}
+
+function renderGame(d){
+  /* 敵機子彈 */
+  d.bullets.forEach(function(b){
+    if(b.owner!=='enemy') return;
+    var col=BULLET_COLOR[b.kind]||'#ff8800';
+    var angle=Math.atan2(b.dy,b.dx)+Math.PI/2;
+    ctx.save(); ctx.shadowColor=col; ctx.shadowBlur=8*S;
+    if(b.kind==='homing'){
+      ctx.translate(b.x*S,b.y*S);
+      if(IMGS.bullet_homing.complete&&IMGS.bullet_homing.naturalWidth)
+        ctx.drawImage(IMGS.bullet_homing,-8*S,-8*S,16*S,16*S);
+      else{ctx.fillStyle='#ff00ff';ctx.beginPath();ctx.arc(0,0,7*S,0,Math.PI*2);ctx.fill();}
+    } else if(b.kind==='laser'){
+      drawRotated(IMGS.bullet_laser,b.x,b.y,6,28,angle,function(){ctx.fillStyle='#00ffff';ctx.fillRect(-3*S,-14*S,6*S,28*S);});
+    } else if(b.kind==='spread'){
+      drawRotated(IMGS.bullet_spread,b.x,b.y,10,14,angle,function(){ctx.fillStyle='#ff44aa';ctx.fillRect(-5*S,-7*S,10*S,14*S);});
+    } else {
+      drawRotated(IMGS.bullet_normal,b.x,b.y,10,20,angle,function(){ctx.fillStyle='#ff8800';ctx.fillRect(-4*S,-10*S,8*S,20*S);});
+    }
+    ctx.restore();
+  });
+
+  /* 玩家子彈 */
+  d.bullets.forEach(function(b){
+    if(b.owner!=='player') return;
+    ctx.save(); ctx.shadowColor='#00e5ff'; ctx.shadowBlur=6*S;
+    if(!tryImg(IMGS.bulletP,b.x,b.y,10,20)){ctx.fillStyle='#00e5ff';ctx.fillRect((b.x-2)*S,(b.y-10)*S,4*S,16*S);}
+    ctx.restore();
+  });
+
+  /* Buff */
+  var BC={dmg_reduce:'#44aaff',hp:'#ff4444',atk_boost:'#ffaa00',bullet_up:'#00ffaa',dmg_boost:'#ff66ff',missile:'#ffffff'};
+  var BI={dmg_reduce:'🛡',hp:'❤',atk_boost:'⚡',bullet_up:'💠',dmg_boost:'🔥',missile:'🚀'};
+  d.buffs.forEach(function(bf){
+    var c=BC[bf.kind]||'#fff';
+    ctx.save(); ctx.shadowColor=c; ctx.shadowBlur=10*S;
+    ctx.strokeStyle=c; ctx.lineWidth=2*S;
+    ctx.beginPath(); ctx.arc(bf.x*S,bf.y*S,10*S,0,Math.PI*2); ctx.stroke();
+    ctx.fillStyle=c; ctx.globalAlpha=0.2; ctx.fill(); ctx.globalAlpha=1;
+    ctx.font=(12*S)+'px serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillStyle='#fff'; ctx.fillText((BI[bf.kind]||'?').charAt(0),bf.x*S,bf.y*S);
+    ctx.restore();
+  });
+
+  /* 敵機 + HP 條 */
+  d.enemies.forEach(function(e){
+    var sz=ETYPE_SZ[e.etype]||[40,32]; var ew=sz[0],eh=sz[1];
+    ctx.save();
+    if(e.is_boss){ctx.shadowColor='#ff0044';ctx.shadowBlur=24*S;}
+    if(!tryImg(IMGS['enemy_'+e.etype],e.x,e.y,ew,eh)){
+      ctx.fillStyle=ETYPE_COLOR[e.etype]||'#ff4444';
+      ctx.fillRect((e.x-ew/2)*S,(e.y-eh/2)*S,ew*S,eh*S);
+    }
+    ctx.restore();
+    var bw=ew*S,bh=4*S,bx=(e.x-ew/2)*S,by=(e.y-eh/2-7)*S;
+    ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(bx,by,bw,bh);
+    var pct=e.hp/e.max_hp;
+    ctx.fillStyle=pct>0.5?'#00ff88':pct>0.25?'#ffaa00':'#ff4444';
+    ctx.fillRect(bx,by,bw*pct,bh);
+  });
+
+  /* 玩家 */
+  if(d.lives>0){
+    var alpha=d.invincible?(Math.sin(Date.now()/80)>0?0.3:1):1;
+    ctx.save(); ctx.globalAlpha=alpha;
+    if(!tryImg(IMGS.player,d.player.x,d.player.y,48,32)){
+      ctx.fillStyle='#00ff88';
+      ctx.fillRect((d.player.x-16)*S,(d.player.y-16)*S,32*S,32*S);
+    }
+    ctx.restore();
+  }
+
+  /* HUD 頂部 */
+  ctx.fillStyle='rgba(0,0,0,.6)'; ctx.fillRect(0,0,cvs.width,26*S);
+  ctx.fillStyle='#00e5ff'; ctx.font=(10*S)+"px 'Courier New'";
+  ctx.textAlign='left'; ctx.textBaseline='top';
+  ctx.fillText('SCORE: '+d.score,8*S,5*S);
+  ctx.textAlign='right';
+  ctx.fillText('LV:'+d.level,(cvs.width-8*S),5*S);
+
+  /* HUD 底部 */
+  ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(0,cvs.height-22*S,cvs.width,22*S);
+  ctx.fillStyle='#ffd700'; ctx.font=(9*S)+"px 'Courier New'";
+  ctx.textAlign='left'; ctx.textBaseline='bottom';
+  var dots='';
+  for(var i=0;i<d.missile_max;i++) dots+=(i<d.missiles)?'●':'○';
+  ctx.fillText('🚀 '+dots,8*S,cvs.height-4*S);
+  ctx.textAlign='right';
+  ctx.fillStyle=d.missiles>0?'#ffd700':'#606060';
+  ctx.fillText('[E] 導彈清場',(cvs.width-8*S),cvs.height-4*S);
+}
+
+/* ---------- 覆蓋畫面 ---------- */
+function drawMenu(){
+  ctx.fillStyle='rgba(0,0,16,.85)'; ctx.fillRect(0,0,cvs.width,cvs.height);
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle='#00e5ff'; ctx.shadowColor='#00e5ff'; ctx.shadowBlur=16*S;
+  ctx.font='bold '+(20*S)+"px 'Courier New'";
+  ctx.fillText('⚡ 雷霆戰機',cvs.width/2,cvs.height*0.3);
+  ctx.shadowBlur=0;
+  ctx.fillStyle='#a0a0c0'; ctx.font=(11*S)+"px 'Courier New'";
+  ctx.fillText('按 Enter 或「開始遊戲」',cvs.width/2,cvs.height*0.44);
+  var info=[
+    ['偵察機','快速衝刺，不射擊','#88aaff'],
+    ['戰鬥機','左右掃蕩，普通子彈','#ff4444'],
+    ['轟炸機','緩速，3 發散射','#ff8800'],
+    ['蛇形機','正弦波，雷射','#aa44ff'],
+    ['Boss','追蹤彈，免疫導彈','#ff0044'],
+  ];
+  ctx.font=(8*S)+"px 'Courier New'";
+  info.forEach(function(row,i){
+    var y=cvs.height*(0.54+i*0.074);
+    ctx.fillStyle=row[2]; ctx.textAlign='left';
+    ctx.fillText('◆ '+row[0],cvs.width*0.10,y);
+    ctx.fillStyle='#606080';
+    ctx.fillText(row[1],cvs.width*0.40,y);
+  });
+}
+function drawPause(){
+  ctx.fillStyle='rgba(0,0,16,.7)'; ctx.fillRect(0,0,cvs.width,cvs.height);
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle='#ffd700'; ctx.font='bold '+(18*S)+"px 'Courier New'";
+  ctx.fillText('⏸ 暫停中',cvs.width/2,cvs.height/2-12*S);
+  ctx.fillStyle='#a0a0c0'; ctx.font=(10*S)+"px 'Courier New'";
+  ctx.fillText('按 P 繼續',cvs.width/2,cvs.height/2+10*S);
+}
+function drawGameOver(d){
+  ctx.fillStyle='rgba(0,0,16,.8)'; ctx.fillRect(0,0,cvs.width,cvs.height);
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillStyle='#ff4444'; ctx.shadowColor='#ff4444'; ctx.shadowBlur=14*S;
+  ctx.font='bold '+(18*S)+"px 'Courier New'";
+  ctx.fillText('GAME OVER',cvs.width/2,cvs.height*0.35);
+  ctx.shadowBlur=0;
+  ctx.fillStyle='#ffd700'; ctx.font=(14*S)+"px 'Courier New'";
+  ctx.fillText(d.score.toLocaleString()+' 分',cvs.width/2,cvs.height*0.47);
+  ctx.fillStyle='#a0a0c0'; ctx.font=(9*S)+"px 'Courier New'";
+  ctx.fillText('按 Enter 重試',cvs.width/2,cvs.height*0.57);
+}
+
+/* ---------- 側欄 ---------- */
+var BCHIP={dmg_reduce:'color:#44aaff;border-color:#44aaff',hp:'color:#ff4444;border-color:#ff4444',
+           atk_boost:'color:#ffaa00;border-color:#ffaa00',bullet_up:'color:#00ffaa;border-color:#00ffaa',
+           dmg_boost:'color:#ff66ff;border-color:#ff66ff',missile:'color:#fff;border-color:#fff'};
+var BNAME={dmg_reduce:'🛡減傷',hp:'❤補血',atk_boost:'⚡攻擊↑',
+           bullet_up:'💠子彈↑',dmg_boost:'🔥傷害↑',missile:'🚀導彈'};
+
+function updateSidebar(d){
+  document.getElementById('score').textContent=d.score.toLocaleString();
+  document.getElementById('level').textContent='Lv.'+d.level;
+  var h=''; for(var i=0;i<d.lives;i++) h+='❤';
+  document.getElementById('lives').textContent=h||'💀';
+  var m=''; for(var i=0;i<d.missile_max;i++) m+=(i<d.missiles)?'●':'○';
+  document.getElementById('missiles').textContent=m;
+  document.getElementById('bullets').textContent=['|','||','|||'][d.bullet_count-1]||'|';
+  var el=document.getElementById('buffs');
+  if(!d.active_buffs.length){el.innerHTML='<span style="color:#404060;font-size:.78rem">無</span>';}
+  else{el.innerHTML=d.active_buffs.map(function(k){return '<span class="buff-chip" style="'+(BCHIP[k]||'')+'">'+( BNAME[k]||k)+'</span>';}).join('');}
+}
+
+/* ---------- 校正提示 ---------- */
+var calDiv = document.createElement('div');
+calDiv.id = 'cal-msg';
+calDiv.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);' +
+  'background:rgba(0,0,16,.92);color:#00e5ff;font-family:Courier New,monospace;' +
+  'font-size:1.1rem;padding:20px 32px;border:2px solid #00e5ff;border-radius:8px;' +
+  'text-align:center;display:none;z-index:999;letter-spacing:1px;';
+document.body.appendChild(calDiv);
+
+socket.on('calibrating', function(d){
+  if(d.msg){
+    calDiv.textContent = d.msg;
+    calDiv.style.display = 'block';
+  } else {
+    calDiv.style.display = 'none';
+  }
+});
+
+/* ---------- Socket ---------- */
+var lastState='menu';
+socket.on('state',function(d){
+  if(d.W&&d.W!==GW) resize(d.W,d.H);
+  updateSidebar(d); render(d);
+  if(d.state==='gameover'&&lastState!=='gameover'&&d.records&&d.records.length) showRecords(d.records);
+  lastState=d.state;
+});
+
+/* ---------- 鍵盤 ---------- */
+var KEYS=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d',' ','e']);
+document.addEventListener('keydown',function(ev){
+  if(ev.key==='Enter'){socket.emit('start');return;}
+  if(ev.key==='p'||ev.key==='P'){socket.emit('pause');return;}
+  if(KEYS.has(ev.key)){ev.preventDefault();socket.emit('keydown',ev.key);}
+});
+document.addEventListener('keyup',function(ev){if(KEYS.has(ev.key)) socket.emit('keyup',ev.key);});
+document.getElementById('btn-start').onclick=function(){socket.emit('start');};
+document.getElementById('btn-pause').onclick=function(){socket.emit('pause');};
+
+/* ---------- 排行榜 ---------- */
+function showRecords(records){
+  document.getElementById('rec-section').style.display='block';
+  document.getElementById('rec-body').innerHTML=records.slice(0,10).map(function(r,i){
+    return '<tr><td>'+(i+1)+'</td><td>'+r.score.toLocaleString()+'</td><td>Lv.'+r.level+'</td><td>'+r.datetime+'</td></tr>';
+  }).join('');
+}
+async function loadRecords(){
+  var sec=document.getElementById('rec-section');
+  sec.style.display=sec.style.display==='none'?'block':'none';
+  if(sec.style.display==='none') return;
+  var data=await fetch('/api/records').then(function(r){return r.json();});
+  showRecords(data.records);
+}
+window.addEventListener('resize',function(){resize(GW,GH);});
+</script>
+</body>
+</html>

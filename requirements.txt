@@ -1,0 +1,14 @@
+# 雷霆戰機 — Python 相依套件
+# 安裝：pip install -r requirements.txt
+
+flask>=3.0
+flask-socketio>=5.3
+python-socketio>=5.10
+eventlet>=0.35          # 或使用 gevent
+requests>=2.31
+
+# Raspberry Pi 硬體相關（Pi 上才需要）
+RPi.GPIO>=0.7.1
+smbus2>=0.4
+spidev>=3.6
+pigpio>=1.78
