@@ -11,7 +11,7 @@ demo_server.py — 雷霆戰機 電腦 Demo 版本
   Enter           開始 / 重新開始
 """
 
-import math, random, sqlite3, threading, time, os
+import atexit, math, random, signal, sqlite3, sys, threading, time, os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Dict
@@ -71,6 +71,25 @@ try:
 except Exception as e:
     _pi = None
     print(f"[HW] 蜂鳴器不可用，停用音效：{e}")
+
+# 程式結束時（含 Ctrl+C）確保關閉蜂鳴器，避免常駐 PWM 一直響
+def _buzzer_off():
+    if _pi:
+        try:
+            _pi.hardware_PWM(BUZZER_PIN, 0, 0)
+            _pi.stop()
+        except Exception:
+            pass
+
+atexit.register(_buzzer_off)
+
+def _handle_exit_signal(signum, frame):
+    _buzzer_off()
+    sys.exit(0)
+
+if _pi:
+    signal.signal(signal.SIGINT,  _handle_exit_signal)
+    signal.signal(signal.SIGTERM, _handle_exit_signal)
 
 def _tone(freq: int, duration_ms: int):
     if not _pi: return
