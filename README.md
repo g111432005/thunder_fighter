@@ -7,6 +7,7 @@
 ## 目錄
 
 - [專案概述](#專案概述)
+- [系統架構](#系統架構)
 - [硬體需求](#硬體需求)
 - [接線說明](#接線說明)
 - [安裝與啟動](#安裝與啟動)
@@ -33,6 +34,40 @@
 > 在樹莓派上執行且接好搖桿/蜂鳴器時，會自動啟用實體搖桿輸入與音效；
 > 在電腦上執行時偵測不到對應硬體，會自動停用，僅用鍵盤操作、無聲音，不影響遊戲。
 > 蜂鳴器需先在樹莓派上執行 `sudo pigpiod`（BUZZER_PIN=18）。
+
+---
+
+## 系統架構
+
+```mermaid
+graph TD
+    subgraph Browser["瀏覽器（game.html）"]
+        Canvas["Canvas 畫面渲染"]
+        Keyboard["鍵盤輸入\nWASD / 空白鍵 / E / Enter"]
+    end
+
+    subgraph Server["demo_server.py（Flask + SocketIO）"]
+        GameLoop["遊戲主迴圈\nGame.update() @30FPS"]
+        Joystick["搖桿讀取執行緒\n_joystick_loop()"]
+        Buzzer["蜂鳴器音效\nbeep_*() / pigpio PWM"]
+    end
+
+    subgraph Pi["樹莓派硬體（選用）"]
+        MCP["MCP3008 + PS2 搖桿"]
+        Btn["射擊按鍵 / 搖桿 SW"]
+        Spk["Keyes 無源蜂鳴器"]
+    end
+
+    Keyboard -- "socket: keydown/keyup/start" --> GameLoop
+    GameLoop -- "socket: state（畫面快照）" --> Canvas
+    MCP -- "SPI 類比訊號" --> Joystick
+    Btn -- "GPIO" --> Joystick
+    Joystick -- "key_down/key_up/start" --> GameLoop
+    GameLoop -- "事件觸發" --> Buzzer
+    Buzzer -- "硬體 PWM" --> Spk
+```
+
+> 在電腦上執行時，沒有 MCP3008/搖桿/蜂鳴器硬體，`Joystick` 與 `Buzzer` 會自動偵測失敗並停用，僅保留鍵盤與畫面渲染的路徑。
 
 ---
 
@@ -130,6 +165,16 @@ python demo_server.py
 | 搖桿 SW（BCM 24） | 遊戲中：發射導彈；未開始/結束畫面：開始 / 重新開始 |
 
 > 每次啟動時自動校正搖桿中心點（約 1 秒），請保持搖桿靜止。
+
+### 遊戲狀態流程
+
+```mermaid
+stateDiagram-v2
+    [*] --> menu
+    menu --> playing: Enter / 開始遊戲 / 搖桿 SW
+    playing --> gameover: 生命值歸零
+    gameover --> playing: Enter / 開始遊戲 / 搖桿 SW
+```
 
 ### 遊戲規則
 
