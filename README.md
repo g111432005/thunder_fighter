@@ -1,6 +1,6 @@
 # ⚡ 雷霆戰機 Thunder Fighter
 
-以 Raspberry Pi 4B 為核心的嵌入式射擊遊戲，整合硬體控制器與 Flask 網頁即時顯示。
+電腦或樹莓派皆可執行的網頁射擊遊戲，瀏覽器顯示畫面，支援鍵盤與樹莓派實體搖桿/蜂鳴器。
 
 ---
 
@@ -22,27 +22,28 @@
 
 | 項目 | 說明 |
 |------|------|
-| 平台 | Raspberry Pi 4B |
+| 平台 | 電腦（Windows/macOS/Linux）或 Raspberry Pi 4B |
 | 語言 | Python 3.10+ |
 | 後端 | Flask 3.x + Flask-SocketIO |
 | 前端 | HTML5 Canvas + JavaScript |
 | 資料庫 | SQLite |
-| 音效 | Keyes 無源蜂鳴器（pigpio 硬體 PWM） |
+| 音效 | Keyes 無源蜂鳴器（pigpio 硬體 PWM，僅樹莓派） |
 
-**兩種執行模式：**
+**單一執行入口：** `demo_server.py`
 
-- `demo_server.py`：電腦或樹莓派皆可，瀏覽器為畫面，支援鍵盤與實體搖桿
-- `main.py`：樹莓派專用，硬體控制器 + Flask 狀態頁面
+> 在樹莓派上執行且接好搖桿/蜂鳴器時，會自動啟用實體搖桿輸入與音效；
+> 在電腦上執行時偵測不到對應硬體，會自動停用，僅用鍵盤操作、無聲音，不影響遊戲。
+> 蜂鳴器需先在樹莓派上執行 `sudo pigpiod`（BUZZER_PIN=18）。
 
 ---
 
 ## 硬體需求
 
+> 以下硬體僅樹莓派需要，電腦執行純鍵盤版本不需任何硬體。
+
 | 元件 | 規格 |
 |------|------|
 | 微控制器 | Raspberry Pi 4B |
-| 螢幕 | LCD 1602 I2C（PCF8574，地址 0x27 或 0x3F） |
-| 生命值指示 | 紅色 LED × 3（220Ω 限流電阻） |
 | 音效 | Keyes 無源蜂鳴器 |
 | 控制器 | PS2 搖桿模組 |
 | ADC | MCP3008（SPI 介面，搖桿類比轉換） |
@@ -79,13 +80,8 @@
 |------|---------|
 | 射擊按鍵 | 23 |
 | 蜂鳴器（PWM） | 18 |
-| LED 1（生命 3） | 17 |
-| LED 2（生命 2） | 27 |
-| LED 3（生命 1） | 22 |
-| LCD SDA | 2（I2C） |
-| LCD SCL | 3（I2C） |
 
-> 使用前請啟用 SPI 與 I2C：`sudo raspi-config` → Interface Options
+> 使用前請啟用 SPI：`sudo raspi-config` → Interface Options
 
 ---
 
@@ -99,7 +95,7 @@ python demo_server.py
 # 瀏覽器開啟 http://localhost:5000
 ```
 
-### 樹莓派版
+### 樹莓派版（搖桿 + 蜂鳴器）
 
 ```bash
 # 啟用 pigpio daemon（無源蜂鳴器需要）
@@ -109,7 +105,7 @@ sudo pigpiod
 pip install -r requirements.txt
 
 # 啟動遊戲
-python main.py
+python demo_server.py
 # 瀏覽器開啟 http://<樹莓派IP>:5000
 ```
 
@@ -200,21 +196,12 @@ python main.py
 
 ```
 thunder_fighter/
-├── demo_server.py       # 電腦/樹莓派 Demo（遊戲主程式 + Flask）
-├── main.py              # 樹莓派主程式入口
-├── game.py              # 遊戲邏輯（MCU 版）
-├── hardware.py          # 硬體驅動（LCD、LED、蜂鳴器、搖桿）
-├── app.py               # Flask 後端（狀態頁面版）
-├── requirements.txt     # 樹莓派版套件需求
-├── requirements_demo.txt# Demo 版套件需求
+├── demo_server.py       # 遊戲主程式（Flask + SocketIO，含搖桿/蜂鳴器支援）
+├── requirements.txt     # 樹莓派版套件需求（含搖桿/蜂鳴器套件）
+├── requirements_demo.txt# 電腦版套件需求
 ├── static/
-│   ├── css/style.css
-│   ├── js/status.js
 │   └── img/             # 遊戲圖片素材
 ├── templates/
-│   ├── game.html        # Demo 遊戲頁面
-│   ├── index.html       # 排行榜首頁
-│   ├── status.html      # 即時狀態頁
-│   └── records.html     # 歷史紀錄頁
+│   └── game.html        # 遊戲頁面
 └── README.md
 ```

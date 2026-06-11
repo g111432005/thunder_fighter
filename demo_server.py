@@ -52,6 +52,69 @@ def get_records(n=50):
     return [{"id":r[0],"score":r[1],"level":r[2],"datetime":r[3]} for r in rows]
 
 # ══════════════════════════════════════════════════════════
+# 蜂鳴器（Keyes 無源蜂鳴器，pigpio 硬體 PWM）
+# 在樹莓派上接了蜂鳴器（BUZZER_PIN=18，需先執行 sudo pigpiod）才會發聲。
+# 在電腦上執行時 pigpio 不存在或連線失敗，自動停用，不影響遊戲。
+# ══════════════════════════════════════════════════════════
+BUZZER_PIN   = 18
+_BUZZER_DUTY = 500_000   # 50% duty cycle
+
+try:
+    import pigpio
+    _pi = pigpio.pi()
+    if not _pi.connected:
+        _pi = None
+        print("[HW] pigpio 未連線（請先執行 sudo pigpiod），蜂鳴器停用")
+    else:
+        _pi.hardware_PWM(BUZZER_PIN, 0, 0)
+        print("[HW] 蜂鳴器已啟用")
+except Exception as e:
+    _pi = None
+    print(f"[HW] 蜂鳴器不可用，停用音效：{e}")
+
+def _tone(freq: int, duration_ms: int):
+    if not _pi: return
+    def _run():
+        _pi.hardware_PWM(BUZZER_PIN, freq, _BUZZER_DUTY)
+        time.sleep(duration_ms / 1000)
+        _pi.hardware_PWM(BUZZER_PIN, 0, 0)
+    threading.Thread(target=_run, daemon=True).start()
+
+def _tone_slide(freq_from: int, freq_to: int, duration_ms: int):
+    if not _pi: return
+    def _run():
+        steps     = max(1, duration_ms // 40)
+        step_size = max(1, (freq_from - freq_to) // steps)
+        f = freq_from
+        _pi.hardware_PWM(BUZZER_PIN, f, _BUZZER_DUTY)
+        for _ in range(steps):
+            f = max(freq_to, f - step_size)
+            _pi.hardware_PWM(BUZZER_PIN, f, _BUZZER_DUTY)
+            time.sleep(0.04)
+        _pi.hardware_PWM(BUZZER_PIN, 0, 0)
+    threading.Thread(target=_run, daemon=True).start()
+
+def beep_shoot():
+    """射擊：1200 Hz，50ms 短促高音"""
+    _tone(1200, 50)
+
+def beep_hit_enemy():
+    """擊中敵機：900 Hz，150ms"""
+    _tone(900, 150)
+
+def beep_player_hit():
+    """玩家被擊中：600 Hz，三連短音"""
+    def _run():
+        for i in range(3):
+            _tone(600, 100)
+            time.sleep(0.18)
+    threading.Thread(target=_run, daemon=True).start()
+
+def beep_game_over():
+    """遊戲結束：400 → 200 Hz 滑降長鳴"""
+    _tone_slide(400, 200, 1000)
+
+# ══════════════════════════════════════════════════════════
 # 遊戲物件
 # ══════════════════════════════════════════════════════════
 
@@ -279,6 +342,7 @@ class Game:
             # 射擊
             if " " in self.keys and p.can_shoot(now):
                 self.bullets.extend(p.shoot(now))
+                beep_shoot()
 
             # 導彈
             if "e" in self.keys and p.missiles > 0:
@@ -333,6 +397,7 @@ class Game:
             if p.lives <= 0:
                 self.state = "gameover"
                 save_record(p.score, self.level)
+                beep_game_over()
 
     def _spawn_enemy(self, cfg, now):
         lv  = self.level
@@ -409,6 +474,7 @@ class Game:
                                e.x-e.hw, e.y-e.hh, e.hw*2, e.hh*2):
                         e.hp -= b.dmg
                         b.active = False
+                        beep_hit_enemy()
                         if e.hp <= 0:
                             e.active = False
                             pts = {"scout":50,"fighter":100,"bomber":200,
@@ -420,6 +486,8 @@ class Game:
                 if overlap(b.x-b.hw, b.y-b.hh, b.hw*2, b.hh*2,
                            p.x-16, p.y-16, 32, 32):
                     b.active = False
+                    if not p.is_invincible(now):
+                        beep_player_hit()
                     p.take_hit(now)
 
         for bf in self.buffs:

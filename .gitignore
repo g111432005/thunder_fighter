@@ -18,6 +18,8 @@ game.db
 
 # 暫存檔
 demo_server_clean.py
+demo_server_clean.py.old
+.trash/
 
 # 系統
 .DS_Store
