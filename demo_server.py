@@ -567,7 +567,7 @@ def _joystick_loop():
     腳位：
       MCP3008 SPI0 CE0（BCM 8）
       射擊按鍵      BCM 23（上拉，按下為 LOW）
-      搖桿 SW 按鈕  BCM 24（上拉，按下為 LOW → 導彈）
+      搖桿 SW 按鈕  BCM 24（上拉，按下為 LOW → 開始/重新開始；遊戲中為導彈）
 
     校正流程：
       啟動時自動校正，請將搖桿放在自然靜止位置。
@@ -647,13 +647,16 @@ def _joystick_loop():
             else:
                 game.key_up(" ")
 
-            # 導彈（搖桿 SW）
+            # 搖桿 SW：遊戲中＝發射導彈；未開始/結束時＝開始或重新開始
             if GPIO.input(MISSILE_PIN) == GPIO.LOW:
                 if now - last_missile_time > 0.5:
                     last_missile_time = now
-                    game.key_down("e")
-                    time.sleep(0.05)
-                    game.key_up("e")
+                    if game.state in ("menu", "gameover"):
+                        game.start()
+                    else:
+                        game.key_down("e")
+                        time.sleep(0.05)
+                        game.key_up("e")
 
             time.sleep(0.02)   # 50Hz 輪詢
 
