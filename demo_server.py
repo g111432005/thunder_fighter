@@ -7,15 +7,13 @@ demo_server.py — 雷霆戰機 電腦 Demo 版本
   WASD / 方向鍵  移動
   空白鍵          連續射擊
   E               導彈清場（非 Boss）
-  P               暫停 / 繼續
   Enter           開始 / 重新開始
 """
 
-import atexit, math, random, signal, sqlite3, sys, threading, time, os
+import atexit, math, random, signal, sys, threading, time
 from dataclasses import dataclass, field
-from datetime import datetime
 from typing import List, Dict
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template
 from flask_socketio import SocketIO, emit
 
 # ── 常數 ──────────────────────────────────────────────────
@@ -29,27 +27,6 @@ MISSILE_MAX       = 3
 MISSILE_REGEN     = 15.0
 INVINCIBLE_TIME   = 2.0
 BUFF_DURATION     = 10.0
-
-DB = os.path.join(os.path.dirname(__file__), "game.db")
-
-# ── 資料庫 ─────────────────────────────────────────────────
-def init_db():
-    with sqlite3.connect(DB) as c:
-        c.execute("""CREATE TABLE IF NOT EXISTS game_records(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            score INTEGER, level INTEGER, datetime TEXT)""")
-
-def save_record(score, level):
-    with sqlite3.connect(DB) as c:
-        c.execute("INSERT INTO game_records VALUES(NULL,?,?,?)",
-                  (score, level, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
-
-def get_records(n=50):
-    with sqlite3.connect(DB) as c:
-        rows = c.execute(
-            "SELECT id,score,level,datetime FROM game_records "
-            "ORDER BY score DESC LIMIT ?", (n,)).fetchall()
-    return [{"id":r[0],"score":r[1],"level":r[2],"datetime":r[3]} for r in rows]
 
 # ══════════════════════════════════════════════════════════
 # 蜂鳴器（Keyes 無源蜂鳴器，pigpio 硬體 PWM）
@@ -333,10 +310,6 @@ class Game:
             self._boss_spawned = False
             self.state = "playing"
 
-    def toggle_pause(self):
-        if   self.state == "playing": self.state = "paused"
-        elif self.state == "paused":  self.state = "playing"
-
     def key_down(self, key): self.keys.add(key)
     def key_up(self,   key): self.keys.discard(key)
 
@@ -415,7 +388,6 @@ class Game:
             # 結束
             if p.lives <= 0:
                 self.state = "gameover"
-                save_record(p.score, self.level)
                 beep_game_over()
 
     def _spawn_enemy(self, cfg, now):
@@ -542,7 +514,6 @@ class Game:
                          "owner":b.owner,"kind":b.kind}
                         for b in self.bullets],
             "buffs":   [{"x":bf.x,"y":bf.y,"kind":bf.kind} for bf in self.buffs],
-            "records": get_records(10) if self.state == "gameover" else [],
             "W": W, "H": H,
         }
 
@@ -685,23 +656,17 @@ def _joystick_loop():
 @app.route("/")
 def index(): return render_template("game.html")
 
-@app.route("/api/records")
-def api_records(): return jsonify({"records": get_records()})
-
 @sio.on("keydown")
 def on_kd(key):  game.key_down(key)
 @sio.on("keyup")
 def on_ku(key):  game.key_up(key)
 @sio.on("start")
 def on_start():  game.start()
-@sio.on("pause")
-def on_pause():  game.toggle_pause()
 @sio.on("connect")
 def on_conn():   emit("state", game.snapshot())
 
 
 if __name__ == "__main__":
-    init_db()
     threading.Thread(target=game_loop,      daemon=True).start()
     threading.Thread(target=_joystick_loop, daemon=True).start()
     print("=" * 44)

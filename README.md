@@ -26,7 +26,6 @@
 | 語言 | Python 3.10+ |
 | 後端 | Flask 3.x + Flask-SocketIO |
 | 前端 | HTML5 Canvas + JavaScript |
-| 資料庫 | SQLite |
 | 音效 | Keyes 無源蜂鳴器（pigpio 硬體 PWM，僅樹莓派） |
 
 **單一執行入口：** `demo_server.py`
@@ -120,7 +119,6 @@ python demo_server.py
 | WASD / 方向鍵 | 移動飛機 |
 | 空白鍵 | 連續射擊 |
 | E | 發射導彈（清除畫面所有非 Boss 敵機） |
-| P | 暫停 / 繼續 |
 | Enter | 開始 / 重新開始 |
 
 ### 搖桿操作（樹莓派）

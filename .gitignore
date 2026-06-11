@@ -13,9 +13,6 @@ venv/
 env/
 .venv/
 
-# 資料庫（遊戲紀錄，不納入版本控制）
-game.db
-
 # 暫存檔
 demo_server_clean.py
 demo_server_clean.py.old

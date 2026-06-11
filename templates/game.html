@@ -25,12 +25,6 @@ h1{color:#00e5ff;font-size:1.6rem;margin-bottom:4px;text-shadow:0 0 12px #00e5ff
 .keys b{color:#00e5ff}
 .buff-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
 .buff-chip{padding:2px 8px;border-radius:12px;font-size:.75rem;border:1px solid;background:rgba(0,0,0,.3)}
-.records{margin-top:16px;width:100%;max-width:680px}
-.records h2{color:#00e5ff;margin-bottom:8px;font-size:.95rem;letter-spacing:1px}
-table{width:100%;border-collapse:collapse;font-size:.88rem}
-th,td{padding:5px 8px;text-align:left;border-bottom:1px solid #00e5ff18}
-th{color:#00e5ff;font-size:.78rem}
-tr:hover td{background:#00e5ff08}
 </style>
 </head>
 <body>
@@ -53,22 +47,13 @@ tr:hover td{background:#00e5ff08}
     <div class="card"><div class="lbl">活躍 Buff</div>
       <div class="buff-row" id="buffs">&mdash;</div></div>
     <button class="btn" id="btn-start">&#9654; 開始遊戲</button>
-    <button class="btn ghost" id="btn-pause">&#9646;&#9646; 暫停</button>
-    <button class="btn ghost" onclick="loadRecords()">&#128203; 排行榜</button>
     <div class="keys">
       <b>WASD / 方向鍵</b> 移動<br>
       <b>空白鍵</b> 射擊<br>
       <b>E</b> 導彈清場<br>
-      <b>P</b> 暫停 / 繼續<br>
       <b>Enter</b> 開始 / 重新開始
     </div>
   </div>
-</div>
-
-<div class="records" id="rec-section" style="display:none">
-  <h2>&#127942; 歷史紀錄</h2>
-  <table><thead><tr><th>#</th><th>分數</th><th>關卡</th><th>時間</th></tr></thead>
-  <tbody id="rec-body"></tbody></table>
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -127,7 +112,6 @@ function render(d){
   ctx.clearRect(0,0,cvs.width,cvs.height);
   if(!tryImg(IMGS.bg,GW/2,GH/2,GW,GH)){ctx.fillStyle='#000010';ctx.fillRect(0,0,cvs.width,cvs.height);}
   if(d.state==='menu'){drawMenu();return;}
-  if(d.state==='paused'){renderGame(d);drawPause();return;}
   if(d.state==='gameover'){renderGame(d);drawGameOver(d);return;}
   renderGame(d);
 }
@@ -250,14 +234,6 @@ function drawMenu(){
     ctx.fillText(row[1],cvs.width*0.40,y);
   });
 }
-function drawPause(){
-  ctx.fillStyle='rgba(0,0,16,.7)'; ctx.fillRect(0,0,cvs.width,cvs.height);
-  ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillStyle='#ffd700'; ctx.font='bold '+(18*S)+"px 'Courier New'";
-  ctx.fillText('⏸ 暫停中',cvs.width/2,cvs.height/2-12*S);
-  ctx.fillStyle='#a0a0c0'; ctx.font=(10*S)+"px 'Courier New'";
-  ctx.fillText('按 P 繼續',cvs.width/2,cvs.height/2+10*S);
-}
 function drawGameOver(d){
   ctx.fillStyle='rgba(0,0,16,.8)'; ctx.fillRect(0,0,cvs.width,cvs.height);
   ctx.textAlign='center'; ctx.textBaseline='middle';
@@ -310,39 +286,19 @@ socket.on('calibrating', function(d){
 });
 
 /* ---------- Socket ---------- */
-var lastState='menu';
 socket.on('state',function(d){
   if(d.W&&d.W!==GW) resize(d.W,d.H);
   updateSidebar(d); render(d);
-  if(d.state==='gameover'&&lastState!=='gameover'&&d.records&&d.records.length) showRecords(d.records);
-  lastState=d.state;
 });
 
 /* ---------- 鍵盤 ---------- */
 var KEYS=new Set(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d',' ','e']);
 document.addEventListener('keydown',function(ev){
   if(ev.key==='Enter'){socket.emit('start');return;}
-  if(ev.key==='p'||ev.key==='P'){socket.emit('pause');return;}
   if(KEYS.has(ev.key)){ev.preventDefault();socket.emit('keydown',ev.key);}
 });
 document.addEventListener('keyup',function(ev){if(KEYS.has(ev.key)) socket.emit('keyup',ev.key);});
 document.getElementById('btn-start').onclick=function(){socket.emit('start');};
-document.getElementById('btn-pause').onclick=function(){socket.emit('pause');};
-
-/* ---------- 排行榜 ---------- */
-function showRecords(records){
-  document.getElementById('rec-section').style.display='block';
-  document.getElementById('rec-body').innerHTML=records.slice(0,10).map(function(r,i){
-    return '<tr><td>'+(i+1)+'</td><td>'+r.score.toLocaleString()+'</td><td>Lv.'+r.level+'</td><td>'+r.datetime+'</td></tr>';
-  }).join('');
-}
-async function loadRecords(){
-  var sec=document.getElementById('rec-section');
-  sec.style.display=sec.style.display==='none'?'block':'none';
-  if(sec.style.display==='none') return;
-  var data=await fetch('/api/records').then(function(r){return r.json();});
-  showRecords(data.records);
-}
 window.addEventListener('resize',function(){resize(GW,GH);});
 </script>
 </body>
