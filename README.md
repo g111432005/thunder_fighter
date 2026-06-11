@@ -8,7 +8,10 @@
 
 - [專案概述](#專案概述)
 - [系統架構](#系統架構)
+- [系統流程圖](#系統流程圖)
+- [前後端互動流程](#前後端互動流程)
 - [硬體需求](#硬體需求)
+- [硬體架構](#硬體架構)
 - [接線說明](#接線說明)
 - [安裝與啟動](#安裝與啟動)
 - [遊戲玩法](#遊戲玩法)
@@ -71,6 +74,72 @@ graph TD
 
 ---
 
+## 系統流程圖
+
+```mermaid
+flowchart TD
+    Start(["python demo_server.py"]) --> InitBuzzer["初始化蜂鳴器（pigpio，失敗則停用）"]
+    InitBuzzer --> ThreadGame["啟動 game_loop 執行緒"]
+    ThreadGame --> ThreadJoy["啟動 _joystick_loop 執行緒"]
+    ThreadJoy --> RunServer["sio.run()：啟動 Flask + SocketIO"]
+
+    subgraph GameLoopThread["game_loop（每幀 1/30 秒）"]
+        direction TB
+        G1["game.update()\n移動/射擊/碰撞/升關/結束判定"] --> G2["sio.emit('state', snapshot)"]
+        G2 --> G1
+    end
+
+    subgraph JoystickThread["_joystick_loop"]
+        direction TB
+        J0["嘗試載入 spidev / RPi.GPIO"]
+        J0 -->|成功| J1["搖桿自動校正（採樣中心點）"]
+        J0 -->|失敗（電腦環境）| J2["印出訊息並結束執行緒\n僅保留鍵盤操作"]
+        J1 --> J3["50Hz 輪詢：讀取搖桿座標 / 按鍵 / SW"]
+        J3 -->|轉換為按鍵事件| GameAPI["game.key_down / key_up / start"]
+        J3 --> J3
+    end
+
+    RunServer --> GameLoopThread
+    RunServer --> JoystickThread
+    RunServer --> Browser["瀏覽器透過 SocketIO 連線"]
+    GameAPI -.-> G1
+```
+
+---
+
+## 前後端互動流程
+
+```mermaid
+sequenceDiagram
+    participant U as 使用者
+    participant B as 瀏覽器（game.html）
+    participant S as Server（demo_server.py）
+
+    B->>S: connect
+    S-->>B: state（初始畫面快照）
+
+    loop 每幀 30 FPS
+        S-->>B: state（分數/生命/關卡/敵機/子彈/Buff...）
+        B->>B: render(d) 重新繪製畫面
+    end
+
+    U->>B: 按下方向鍵 / WASD / 空白鍵 / E
+    B->>S: keydown(key)
+    U->>B: 放開按鍵
+    B->>S: keyup(key)
+
+    U->>B: 按 Enter 或點擊「開始遊戲」
+    B->>S: start
+    S->>S: game.start()（重置玩家/敵機/關卡，state=playing）
+
+    Note over S: 玩家生命值歸零
+    S->>S: state=gameover，beep_game_over()
+    S-->>B: state（state=gameover）
+    B->>B: drawGameOver() 顯示結算畫面
+```
+
+---
+
 ## 硬體需求
 
 > 以下硬體僅樹莓派需要，電腦執行純鍵盤版本不需任何硬體。
@@ -82,6 +151,27 @@ graph TD
 | 控制器 | PS2 搖桿模組 |
 | ADC | MCP3008（SPI 介面，搖桿類比轉換） |
 | 射擊按鍵 | 常開型按鍵（NO Push Button） |
+
+---
+
+## 硬體架構
+
+```mermaid
+graph LR
+    Pi["Raspberry Pi 4B\nGPIO"]
+    MCP["MCP3008\n(SPI ADC)"]
+    Joy["PS2 搖桿模組\n(VRx / VRy / SW)"]
+    Btn["射擊按鍵"]
+    Buzzer["Keyes 無源蜂鳴器"]
+
+    Joy -- "VRx → CH0\nVRy → CH1" --> MCP
+    MCP -- "SPI0\nSCLK11 / MISO9 / MOSI10 / CE0 8" --> Pi
+    Joy -- "SW 按鈕" -- "BCM 24" --> Pi
+    Btn -- "BCM 23" --> Pi
+    Pi -- "BCM 18\n硬體 PWM（需 sudo pigpiod）" --> Buzzer
+```
+
+> 搖桿方向訊號經 MCP3008 轉成數位訊號由 SPI 讀取；搖桿 SW 與射擊按鍵直接接 GPIO；蜂鳴器由 pigpio 硬體 PWM 驅動。
 
 ---
 
