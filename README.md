@@ -166,7 +166,7 @@ graph LR
 
     Joy -- "VRx → CH0\nVRy → CH1" --> MCP
     MCP -- "SPI0\nSCLK11 / MISO9 / MOSI10 / CE0 8" --> Pi
-    Joy -- "SW 按鈕" -- "BCM 24" --> Pi
+    Joy -- "SW 按鈕 → BCM 24" --> Pi
     Btn -- "BCM 23" --> Pi
     Pi -- "BCM 18\n硬體 PWM（需 sudo pigpiod）" --> Buzzer
 ```
